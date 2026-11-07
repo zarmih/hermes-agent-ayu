@@ -1,0 +1,1347 @@
+From f9ab411be003afe19fc8d3b7288ef45e9599e215 Mon Sep 17 00:00:00 2001
+From: Mikhail <zarmih@mail.ru>
+Date: Sat, 7 Nov 2026 15:50:38 +0300
+Subject: [PATCH] feat(ui-tui): add Ayu theme tokens and full lexical syntax
+ highlighting
+
+---
+ apps/shared/src/skin.ts                       |   6 +
+ .../__tests__/markdownCodeHighlight.test.tsx  | 141 ++++
+ ui-tui/src/__tests__/syntax.test.ts           | 262 ++++++-
+ ui-tui/src/components/markdown.tsx            |   4 +-
+ ui-tui/src/lib/syntax.ts                      | 729 ++++++++++++++++--
+ ui-tui/src/theme.ts                           |  24 +-
+ 6 files changed, 1102 insertions(+), 64 deletions(-)
+ create mode 100644 ui-tui/src/__tests__/markdownCodeHighlight.test.tsx
+
+diff --git a/apps/shared/src/skin.ts b/apps/shared/src/skin.ts
+index fe120c2b59..c19e0ab27f 100644
+--- a/apps/shared/src/skin.ts
++++ b/apps/shared/src/skin.ts
+@@ -48,6 +48,12 @@ export const SKIN_COLOR_TOKENS = [
+   'syntax_number',
+   'syntax_keyword',
+   'syntax_comment',
++  'syntax_function',
++  'syntax_type',
++  'syntax_constant',
++  'syntax_operator',
++  'syntax_punctuation',
++  'ui_heading',
+   // CLI / TUI chrome.
+   'prompt',
+   'input_rule',
+diff --git a/ui-tui/src/__tests__/markdownCodeHighlight.test.tsx b/ui-tui/src/__tests__/markdownCodeHighlight.test.tsx
+new file mode 100644
+index 0000000000..8ca1a73d28
+--- /dev/null
++++ b/ui-tui/src/__tests__/markdownCodeHighlight.test.tsx
+@@ -0,0 +1,141 @@
++import { PassThrough } from 'stream'
++
++import { Box, renderSync } from '@hermes/ink'
++import chalk from 'chalk'
++import React from 'react'
++import { describe, expect, it } from 'vitest'
++
++import { Md } from '../components/markdown.js'
++import { fromSkin } from '../theme.js'
++
++const ayuSkin = {
++  background: '#0B0E14',
++  ui_primary: '#C792EA',
++  ui_accent: '#FF8F40',
++  ui_text: '#D9DEE8',
++  ui_heading: '#C792EA',
++  banner_dim: '#8A91A5',
++  syntax_keyword: '#FF8F40',
++  syntax_string: '#AAD94C',
++  syntax_number: '#D2A6FF',
++  syntax_function: '#FFD580',
++  syntax_type: '#73D0FF',
++  syntax_comment: '#6B7280',
++  syntax_constant: '#DFBFFF',
++  syntax_operator: '#F29668',
++  syntax_punctuation: '#8A91A5',
++  diff_added: '#16261E',
++  diff_removed: '#32181E',
++  diff_added_word: '#AAD94C',
++  diff_removed_word: '#F07178'
++}
++
++const ayuTheme = fromSkin(ayuSkin, { agent_name: 'Ayu Hermes Agent' })
++
++const ESC = '\u001B'
++
++function renderMdToTrueColors(text: string): string[] {
++  const savedLevel = chalk.level
++  chalk.level = 3
++
++  const stdout = new PassThrough()
++  const stdin = new PassThrough()
++  const stderr = new PassThrough()
++  let output = ''
++
++  Object.assign(stdout, { columns: 100, isTTY: true, rows: 40 })
++  Object.assign(stdin, { isTTY: false })
++  Object.assign(stderr, { isTTY: false })
++  stdout.on('data', chunk => {
++    output += chunk.toString()
++  })
++
++  const instance = renderSync(
++    React.createElement(Box, { width: 90 }, React.createElement(Md, { cols: 88, t: ayuTheme, text })),
++    {
++      patchConsole: false,
++      stderr: stderr as NodeJS.WriteStream,
++      stdin: stdin as NodeJS.ReadStream,
++      stdout: stdout as NodeJS.WriteStream
++    }
++  )
++
++  instance.unmount()
++  instance.cleanup()
++  chalk.level = savedLevel
++
++  return [...output.matchAll(new RegExp(`${ESC}\\[38;2;(\\d+);(\\d+);(\\d+)m`, 'g'))].map(
++    m =>
++      '#' +
++      m
++        .slice(1, 4)
++        .map(v => Number(v).toString(16).padStart(2, '0'))
++        .join('')
++        .toUpperCase()
++  )
++}
++
++describe('Markdown Code Highlighting in React Ink with Ayu theme', () => {
++  it('renders Python code block with truecolor syntax highlighting', () => {
++    const md = [
++      '```python',
++      'import json',
++      'def calculate_total(items: list[int]) -> int:',
++      '    """Calculate the total."""',
++      '    return sum(items) + 42',
++      'print(calculate_total([1, 2, 3]))',
++      '```'
++    ].join('\n')
++
++    const colors = renderMdToTrueColors(md)
++
++    expect(colors).toContain('#FF8F40') // keyword (import, def, return)
++    expect(colors).toContain('#FFD580') // function (calculate_total, sum, print)
++    expect(colors).toContain('#73D0FF') // type (list, int)
++    expect(colors).toContain('#AAD94C') // string (docstring)
++    expect(colors).toContain('#D2A6FF') // number (42, 1, 2, 3)
++  })
++
++  it('renders C++ code block with truecolor syntax highlighting', () => {
++    const md = [
++      '```cpp',
++      '#include <iostream>',
++      '#include <vector>',
++      'int main() {',
++      '    std::vector<int> values = {10, 20, 30};',
++      '    // Print the result',
++      '    for (int value : values) {',
++      '        std::cout << value << std::endl;',
++      '    }',
++      '    return 0;',
++      '}',
++      '```'
++    ].join('\n')
++
++    const colors = renderMdToTrueColors(md)
++
++    expect(colors).toContain('#FF8F40') // #include, for, return
++    expect(colors).toContain('#AAD94C') // <iostream>, <vector>
++    expect(colors).toContain('#73D0FF') // int, vector
++    expect(colors).toContain('#FFD580') // main
++    expect(colors).toContain('#DFBFFF') // std, endl
++    expect(colors).toContain('#6B7280') // // Print the result
++    expect(colors).toContain('#D2A6FF') // 10, 20, 30, 0
++  })
++
++  it('renders Diff with additions and deletions', () => {
++    const md = ['```diff', '- const theme = "poseidon";', '+ const theme = "ayu-hermes";', '```'].join('\n')
++
++    const colors = renderMdToTrueColors(md)
++
++    expect(colors).toContain('#F07178') // diffRemovedWord
++    expect(colors).toContain('#AAD94C') // diffAddedWord
++  })
++
++  it('renders Markdown heading with Ayu heading color', () => {
++    const md = '# Header title\nSome prose text'
++    const colors = renderMdToTrueColors(md)
++
++    expect(colors).toContain('#C792EA') // ui_heading / primary
++  })
++})
+diff --git a/ui-tui/src/__tests__/syntax.test.ts b/ui-tui/src/__tests__/syntax.test.ts
+index 7978adcaef..5895b954d3 100644
+--- a/ui-tui/src/__tests__/syntax.test.ts
++++ b/ui-tui/src/__tests__/syntax.test.ts
+@@ -1,24 +1,57 @@
+ import { describe, expect, it } from 'vitest'
+ 
+ import { highlightLine, isHighlightable } from '../lib/syntax.js'
+-import { DEFAULT_THEME } from '../theme.js'
++import { DEFAULT_THEME, fromSkin } from '../theme.js'
+ 
+ const t = DEFAULT_THEME
+ 
++const ayuSkin = {
++  background: '#0B0E14',
++  ui_primary: '#C792EA',
++  ui_accent: '#FF8F40',
++  ui_text: '#D9DEE8',
++  ui_heading: '#C792EA',
++  banner_dim: '#8A91A5',
++  syntax_keyword: '#FF8F40',
++  syntax_string: '#AAD94C',
++  syntax_number: '#D2A6FF',
++  syntax_function: '#FFD580',
++  syntax_type: '#73D0FF',
++  syntax_comment: '#6B7280',
++  syntax_constant: '#DFBFFF',
++  syntax_operator: '#F29668',
++  syntax_punctuation: '#8A91A5',
++  diff_added: '#16261E',
++  diff_removed: '#32181E',
++  diff_added_word: '#AAD94C',
++  diff_removed_word: '#F07178'
++}
++
++const ayuTheme = fromSkin(ayuSkin, { agent_name: 'Ayu Hermes Agent' })
++
+ describe('syntax highlighter', () => {
+   it('recognizes supported langs and aliases', () => {
+     expect(isHighlightable('ts')).toBe(true)
+     expect(isHighlightable('js')).toBe(true)
+     expect(isHighlightable('python')).toBe(true)
++    expect(isHighlightable('py')).toBe(true)
++    expect(isHighlightable('cpp')).toBe(true)
++    expect(isHighlightable('c++')).toBe(true)
++    expect(isHighlightable('c')).toBe(true)
++    expect(isHighlightable('json')).toBe(true)
++    expect(isHighlightable('yaml')).toBe(true)
++    expect(isHighlightable('sql')).toBe(true)
++    expect(isHighlightable('html')).toBe(true)
++    expect(isHighlightable('css')).toBe(true)
+     expect(isHighlightable('rs')).toBe(true)
+     expect(isHighlightable('bash')).toBe(true)
++    expect(isHighlightable('sh')).toBe(true)
+     expect(isHighlightable('whatever')).toBe(false)
+     expect(isHighlightable('')).toBe(false)
+   })
+ 
+   it('paints a whole-line comment dim', () => {
+     const tokens = highlightLine('// hello', 'ts', t)
+-
+     expect(tokens).toEqual([[t.color.muted, '// hello']])
+   })
+ 
+@@ -33,13 +66,234 @@ describe('syntax highlighter', () => {
+ 
+   it('falls through unchanged for unknown langs', () => {
+     const tokens = highlightLine(`const x = 1`, 'zzz', t)
+-
+     expect(tokens).toEqual([['', 'const x = 1']])
+   })
+ 
+   it('treats `#` as a python comment, not a selector', () => {
+     const tokens = highlightLine('# comment', 'py', t)
+-
+     expect(tokens).toEqual([[t.color.muted, '# comment']])
+   })
++
++  // ── Test A: Python ────────────────────────────────────────────────
++  it('Test A: highlights Python with Ayu theme colors', () => {
++    const lines = [
++      'import json',
++      'def calculate_total(items: list[int]) -> int:',
++      '    """Calculate the total."""',
++      '    return sum(items) + 42',
++      'print(calculate_total([1, 2, 3]))'
++    ]
++
++    for (const line of lines) {
++      const tokens = highlightLine(line, 'python', ayuTheme)
++      // Character preservation invariant: never drop characters
++      expect(tokens.map(x => x[1]).join('')).toBe(line)
++    }
++
++    // Line 1: import json
++    const l1 = highlightLine(lines[0]!, 'python', ayuTheme)
++    expect(l1.find(x => x[1] === 'import')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++
++    // Line 2: def calculate_total(items: list[int]) -> int:
++    const l2 = highlightLine(lines[1]!, 'python', ayuTheme)
++    expect(l2.find(x => x[1] === 'def')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(l2.find(x => x[1] === 'calculate_total')?.[0]).toBe(ayuTheme.color.syntaxFunction)
++    expect(l2.find(x => x[1] === 'list')?.[0]).toBe(ayuTheme.color.syntaxType)
++    expect(l2.find(x => x[1] === 'int')?.[0]).toBe(ayuTheme.color.syntaxType)
++    expect(l2.find(x => x[1] === '->')?.[0]).toBe(ayuTheme.color.syntaxOperator)
++
++    // Line 3: docstring
++    const l3 = highlightLine(lines[2]!, 'python', ayuTheme)
++    expect(l3.find(x => x[1].includes('Calculate the total.'))?.[0]).toBe(ayuTheme.color.syntaxString)
++
++    // Line 4: return sum(items) + 42
++    const l4 = highlightLine(lines[3]!, 'python', ayuTheme)
++    expect(l4.find(x => x[1] === 'return')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(l4.find(x => x[1] === 'sum')?.[0]).toBe(ayuTheme.color.syntaxFunction)
++    expect(l4.find(x => x[1] === '+')?.[0]).toBe(ayuTheme.color.syntaxOperator)
++    expect(l4.find(x => x[1] === '42')?.[0]).toBe(ayuTheme.color.syntaxNumber)
++
++    // Line 5: print(calculate_total([1, 2, 3]))
++    const l5 = highlightLine(lines[4]!, 'python', ayuTheme)
++    expect(l5.find(x => x[1] === 'print')?.[0]).toBe(ayuTheme.color.syntaxFunction)
++    expect(l5.find(x => x[1] === 'calculate_total')?.[0]).toBe(ayuTheme.color.syntaxFunction)
++    expect(l5.find(x => x[1] === '1')?.[0]).toBe(ayuTheme.color.syntaxNumber)
++  })
++
++  // ── Test B: C++ ───────────────────────────────────────────────────
++  it('Test B: highlights C++ with Ayu theme colors', () => {
++    const lines = [
++      '#include <iostream>',
++      '#include <vector>',
++      'int main() {',
++      '    std::vector<int> values = {10, 20, 30};',
++      '    // Print the result',
++      '    for (int value : values) {',
++      '        std::cout << value << std::endl;',
++      '    }',
++      '    return 0;',
++      '}'
++    ]
++
++    for (const line of lines) {
++      const tokens = highlightLine(line, 'cpp', ayuTheme)
++      expect(tokens.map(x => x[1]).join('')).toBe(line)
++    }
++
++    // Line 1: #include <iostream>
++    const l1 = highlightLine(lines[0]!, 'cpp', ayuTheme)
++    expect(l1.find(x => x[1] === '#include')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(l1.find(x => x[1] === '<iostream>')?.[0]).toBe(ayuTheme.color.syntaxString)
++
++    // Line 3: int main() {
++    const l3 = highlightLine(lines[2]!, 'cpp', ayuTheme)
++    expect(l3.find(x => x[1] === 'int')?.[0]).toBe(ayuTheme.color.syntaxType)
++    expect(l3.find(x => x[1] === 'main')?.[0]).toBe(ayuTheme.color.syntaxFunction)
++
++    // Line 4: std::vector<int> values = {10, 20, 30};
++    const l4 = highlightLine(lines[3]!, 'cpp', ayuTheme)
++    expect(l4.find(x => x[1] === 'std')?.[0]).toBe(ayuTheme.color.syntaxConstant)
++    expect(l4.find(x => x[1] === '::')?.[0]).toBe(ayuTheme.color.syntaxOperator)
++    expect(l4.find(x => x[1] === 'vector')?.[0]).toBe(ayuTheme.color.syntaxType)
++    expect(l4.find(x => x[1] === 'int')?.[0]).toBe(ayuTheme.color.syntaxType)
++    expect(l4.find(x => x[1] === '=')?.[0]).toBe(ayuTheme.color.syntaxOperator)
++    expect(l4.find(x => x[1] === '10')?.[0]).toBe(ayuTheme.color.syntaxNumber)
++
++    // Line 5: // Print the result
++    const l5 = highlightLine(lines[4]!, 'cpp', ayuTheme)
++    expect(l5.find(x => x[1].includes('Print the result'))?.[0]).toBe(ayuTheme.color.syntaxComment)
++
++    // Line 6: for (int value : values) {
++    const l6 = highlightLine(lines[5]!, 'cpp', ayuTheme)
++    expect(l6.find(x => x[1] === 'for')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(l6.find(x => x[1] === 'int')?.[0]).toBe(ayuTheme.color.syntaxType)
++
++    // Line 7: std::cout << value << std::endl;
++    const l7 = highlightLine(lines[6]!, 'cpp', ayuTheme)
++    expect(l7.find(x => x[1] === 'cout')?.[0]).toBe(ayuTheme.color.syntaxConstant)
++    expect(l7.find(x => x[1] === '<<')?.[0]).toBe(ayuTheme.color.syntaxOperator)
++    expect(l7.find(x => x[1] === 'endl')?.[0]).toBe(ayuTheme.color.syntaxConstant)
++
++    // Line 9: return 0;
++    const l9 = highlightLine(lines[8]!, 'cpp', ayuTheme)
++    expect(l9.find(x => x[1] === 'return')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(l9.find(x => x[1] === '0')?.[0]).toBe(ayuTheme.color.syntaxNumber)
++  })
++
++  // ── Test C: JavaScript ────────────────────────────────────────────
++  it('Test C: highlights JavaScript with Ayu theme colors', () => {
++    const lines = [
++      'const fetchData = async (url) => {',
++      '    const response = await fetch(url);',
++      '    return response.json();',
++      '};'
++    ]
++
++    for (const line of lines) {
++      const tokens = highlightLine(line, 'javascript', ayuTheme)
++      expect(tokens.map(x => x[1]).join('')).toBe(line)
++    }
++
++    const l1 = highlightLine(lines[0]!, 'javascript', ayuTheme)
++    expect(l1.find(x => x[1] === 'const')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(l1.find(x => x[1] === 'async')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(l1.find(x => x[1] === '=>')?.[0]).toBe(ayuTheme.color.syntaxOperator)
++
++    const l2 = highlightLine(lines[1]!, 'javascript', ayuTheme)
++    expect(l2.find(x => x[1] === 'await')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(l2.find(x => x[1] === 'fetch')?.[0]).toBe(ayuTheme.color.syntaxFunction)
++
++    const l3 = highlightLine(lines[2]!, 'javascript', ayuTheme)
++    expect(l3.find(x => x[1] === 'return')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(l3.find(x => x[1] === 'json')?.[0]).toBe(ayuTheme.color.syntaxFunction)
++  })
++
++  // ── Test D: JSON ──────────────────────────────────────────────────
++  it('Test D: highlights JSON with Ayu theme colors', () => {
++    const lines = [
++      '{',
++      '    "name": "Hermes",',
++      '    "theme": "ayu-hermes",',
++      '    "highlighting": true,',
++      '    "version": 1',
++      '}'
++    ]
++
++    for (const line of lines) {
++      const tokens = highlightLine(line, 'json', ayuTheme)
++      expect(tokens.map(x => x[1]).join('')).toBe(line)
++    }
++
++    const l2 = highlightLine(lines[1]!, 'json', ayuTheme)
++    expect(l2.find(x => x[1] === '"name"')?.[0]).toBe(ayuTheme.color.syntaxFunction)
++    expect(l2.find(x => x[1] === '"Hermes"')?.[0]).toBe(ayuTheme.color.syntaxString)
++
++    const l4 = highlightLine(lines[3]!, 'json', ayuTheme)
++    expect(l4.find(x => x[1] === 'true')?.[0]).toBe(ayuTheme.color.syntaxConstant)
++
++    const l5 = highlightLine(lines[4]!, 'json', ayuTheme)
++    expect(l5.find(x => x[1] === '1')?.[0]).toBe(ayuTheme.color.syntaxNumber)
++  })
++
++  // ── Test E: Diff ──────────────────────────────────────────────────
++  it('Test E: validates Diff palette and styles in theme', () => {
++    expect(ayuTheme.color.diffAddedWord).toBe('#AAD94C')
++    expect(ayuTheme.color.diffRemovedWord).toBe('#F07178')
++    expect(ayuTheme.color.diffAdded).toBe('#16261E')
++    expect(ayuTheme.color.diffRemoved).toBe('#32181E')
++  })
++
++  // ── Unicode & Cyrillic ────────────────────────────────────────────
++  it('handles Unicode and Cyrillic text safely', () => {
++    const pyLine = 'def привет_мир(значение: int) -> str: # функция'
++    const tokens = highlightLine(pyLine, 'python', ayuTheme)
++
++    expect(tokens.map(x => x[1]).join('')).toBe(pyLine)
++    expect(tokens.find(x => x[1] === 'def')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(tokens.find(x => x[1].includes('# функция'))?.[0]).toBe(ayuTheme.color.syntaxComment)
++
++    const cppLine = 'std::string текст = "Привет, мир!"; // комментарий'
++    const cppTokens = highlightLine(cppLine, 'cpp', ayuTheme)
++
++    expect(cppTokens.map(x => x[1]).join('')).toBe(cppLine)
++    expect(cppTokens.find(x => x[1] === 'std')?.[0]).toBe(ayuTheme.color.syntaxConstant)
++    expect(cppTokens.find(x => x[1] === 'string')?.[0]).toBe(ayuTheme.color.syntaxType)
++    expect(cppTokens.find(x => x[1] === '"Привет, мир!"')?.[0]).toBe(ayuTheme.color.syntaxString)
++    expect(cppTokens.find(x => x[1] === '// комментарий')?.[0]).toBe(ayuTheme.color.syntaxComment)
++  })
++
++  // ── Long line & performance ───────────────────────────────────────
++  it('tokenizes long lines quickly without dropping characters', () => {
++    const longLine = 'const longVal = [' + '123, '.repeat(500) + '456];'
++    const start = performance.now()
++    const tokens = highlightLine(longLine, 'javascript', ayuTheme)
++    const elapsed = performance.now() - start
++
++    expect(tokens.map(x => x[1]).join('')).toBe(longLine)
++    expect(elapsed).toBeLessThan(50) // takes < 50ms (typically ~1-2ms)
++  })
++
++  // ── Shell / Bash ──────────────────────────────────────────────────
++  it('highlights Shell/Bash variables and commands', () => {
++    const line = 'echo "Target: $USER" && cd /tmp'
++    const tokens = highlightLine(line, 'bash', ayuTheme)
++
++    expect(tokens.map(x => x[1]).join('')).toBe(line)
++    expect(tokens.find(x => x[1] === 'echo')?.[0]).toBe(ayuTheme.color.syntaxFunction)
++    expect(tokens.find(x => x[1] === 'cd')?.[0]).toBe(ayuTheme.color.syntaxFunction)
++    expect(tokens.find(x => x[1] === '&&')?.[0]).toBe(ayuTheme.color.syntaxOperator)
++  })
++
++  // ── SQL ───────────────────────────────────────────────────────────
++  it('highlights SQL queries case-insensitively', () => {
++    const line = 'SELECT id, count(*) FROM users WHERE active = true;'
++    const tokens = highlightLine(line, 'sql', ayuTheme)
++
++    expect(tokens.map(x => x[1]).join('')).toBe(line)
++    expect(tokens.find(x => x[1] === 'SELECT')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(tokens.find(x => x[1] === 'FROM')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(tokens.find(x => x[1] === 'WHERE')?.[0]).toBe(ayuTheme.color.syntaxKeyword)
++    expect(tokens.find(x => x[1] === 'count')?.[0]).toBe(ayuTheme.color.syntaxFunction)
++    expect(tokens.find(x => x[1] === 'true')?.[0]).toBe(ayuTheme.color.syntaxConstant)
++  })
+ })
+diff --git a/ui-tui/src/components/markdown.tsx b/ui-tui/src/components/markdown.tsx
+index 1912bca251..e91c17a522 100644
+--- a/ui-tui/src/components/markdown.tsx
++++ b/ui-tui/src/components/markdown.tsx
+@@ -922,7 +922,7 @@ function MdImpl({ cols, compact, t, text }: MdProps) {
+       if (heading) {
+         start('heading')
+         nodes.push(
+-          <Text bold color={t.color.accent} key={key} wrap="wrap-trim">
++          <Text bold color={t.color.heading ?? t.color.accent} key={key} wrap="wrap-trim">
+             <MdInline t={t} text={heading} />
+           </Text>
+         )
+@@ -934,7 +934,7 @@ function MdImpl({ cols, compact, t, text }: MdProps) {
+       if (i + 1 < lines.length && SETEXT_RE.test(lines[i + 1]!)) {
+         start('heading')
+         nodes.push(
+-          <Text bold color={t.color.accent} key={key} wrap="wrap-trim">
++          <Text bold color={t.color.heading ?? t.color.accent} key={key} wrap="wrap-trim">
+             <MdInline t={t} text={line.trim()} />
+           </Text>
+         )
+diff --git a/ui-tui/src/lib/syntax.ts b/ui-tui/src/lib/syntax.ts
+index 519679c1f5..b5560f0037 100644
+--- a/ui-tui/src/lib/syntax.ts
++++ b/ui-tui/src/lib/syntax.ts
+@@ -2,115 +2,730 @@ import type { Theme } from '../theme.js'
+ 
+ export type Token = [string, string]
+ 
++export type TokenCategory =
++  'keyword' | 'string' | 'number' | 'comment' | 'function' | 'type' | 'constant' | 'operator' | 'punctuation' | 'plain'
++
+ interface LangSpec {
+-  comment: null | string
++  lineComment?: string
++  blockCommentStart?: string
++  blockCommentEnd?: string
+   keywords: Set<string>
++  types: Set<string>
++  constants: Set<string>
++  builtins: Set<string>
++  hasPreprocessor?: boolean
++  hasShellVars?: boolean
++  isJson?: boolean
++  isYaml?: boolean
++  isSql?: boolean
++  isHtml?: boolean
++  isCss?: boolean
+ }
+ 
+-const KW = (s: string) => new Set(s.split(/\s+/).filter(Boolean))
++const SET = (s: string) => new Set(s.split(/\s+/).filter(Boolean))
++
++// ── C and C++ ────────────────────────────────────────────────────────
++const C_CPP_KEYWORDS = SET(`
++  alignas alignof asm auto break case catch class compl const const_cast constexpr
++  continue decltype default delete do dynamic_cast else enum explicit export extern
++  final for friend goto if inline mutable namespace new noexcept not not_eq
++  operator or or_eq override private protected public register reinterpret_cast
++  requires return sizeof static static_assert static_cast struct switch
++  template throw try typedef typeid typename union using
++  virtual volatile while xor xor_eq
++  co_await co_return co_yield concept
++`)
++
++const C_CPP_TYPES = SET(`
++  int char float double void bool short long signed unsigned wchar_t char8_t char16_t char32_t
++  size_t ssize_t int8_t int16_t int32_t int64_t uint8_t uint16_t uint32_t uint64_t
++  uintptr_t intptr_t ptrdiff_t intmax_t uintmax_t
++  string string_view wstring u16string u32string
++  vector list deque array forward_list map set unordered_map unordered_set multimap multiset
++  pair tuple unique_ptr shared_ptr weak_ptr optional variant any span
++  ifstream ofstream fstream stringstream istringstream ostringstream ostream istream iostream
++`)
++
++const C_CPP_CONSTANTS = SET(`
++  true false nullptr NULL std cin cout cerr clog endl EOF EXIT_SUCCESS EXIT_FAILURE
++`)
++
++// ── Python ──────────────────────────────────────────────────────────
++const PY_KEYWORDS = SET(`
++  and as assert async await break case class continue def del elif else except
++  finally for from global if import in is lambda match nonlocal not or pass
++  raise return try while with yield
++`)
++
++const PY_TYPES = SET(`
++  int float str bool list dict set tuple bytes bytearray object type complex
++  frozenset range slice memoryview Any Optional Union List Dict Set Tuple
++  Callable Iterable Iterator Sequence Mapping Generator Literal Self ClassVar
++`)
++
++const PY_CONSTANTS = SET(`
++  True False None Ellipsis NotImplemented self cls
++  __name__ __doc__ __file__ __dict__ __module__ __package__
++`)
++
++const PY_BUILTINS = SET(`
++  print sum len range enumerate zip min max abs open isinstance issubclass
++  getattr setattr hasattr delattr id repr sorted all any input super help dir
++  vars callable iter next hash chr ord hex oct bin format eval exec
++`)
++
++// ── JavaScript / TypeScript ─────────────────────────────────────────
++const JS_TS_KEYWORDS = SET(`
++  abstract as async await break case catch class const continue debugger default delete
++  do else enum export extends false finally for from function get if implements import
++  in infer instanceof interface is keyof let module namespace new null of package private
++  protected public readonly return satisfies set static super switch this throw true try
++  type typeof undefined var void while with yield declare override
++`)
++
++const JS_TS_TYPES = SET(`
++  string number boolean symbol bigint any unknown never void null undefined object
++  Array Record Promise Map Set WeakMap WeakSet Date RegExp Function Error
++  Partial Required Readonly Pick Omit Exclude Extract NonNullable ReturnType
++  InstanceType Parameters ConstructorParameters
++`)
++
++const JS_TS_CONSTANTS = SET(`
++  true false null undefined NaN Infinity this globalThis window document process console
++`)
++
++const JS_TS_BUILTINS = SET(`
++  fetch setTimeout setInterval clearTimeout clearInterval require parseInt parseFloat
++  encodeURI decodeURI encodeURIComponent decodeURIComponent
++`)
++
++// ── Shell / Bash ────────────────────────────────────────────────────
++const SH_KEYWORDS = SET(`
++  if then else elif fi for in do done while until case esac function return break
++  continue local export readonly declare typeset select time set unset shift
++`)
++
++const SH_BUILTINS = SET(`
++  echo printf cd pwd ls cat grep sed awk find mkdir rm cp mv chmod chown curl
++  wget git npm node python hermes source exec eval exit test sudo brew apt which
++  head tail touch tar ssh scp
++`)
++
++const SH_CONSTANTS = SET(`
++  true false
++`)
++
++// ── SQL ─────────────────────────────────────────────────────────────
++const SQL_KEYWORDS = SET(`
++  select from where and or not in is as by group order having limit offset
++  insert into values update set delete create table view index drop alter add
++  column primary key foreign references join left right inner outer cross full on
++  union all distinct case when then else end with exists between like ilike cast
++  over partition desc asc
++`)
++
++const SQL_TYPES = SET(`
++  int integer bigint smallint varchar char text boolean bool timestamp date
++  datetime time numeric decimal float double real json jsonb blob serial bigserial uuid
++`)
++
++const SQL_BUILTINS = SET(`
++  count sum avg min max coalesce now concat substring trim lower upper length
++  round date_trunc lead lag row_number rank dense_rank
++`)
++
++// ── Rust ────────────────────────────────────────────────────────────
++const RUST_KEYWORDS = SET(`
++  as async await break const continue crate dyn else enum extern false fn for if
++  impl in let loop match mod move mut pub ref return self Self static struct super
++  trait true type unsafe use where while yield
++`)
+ 
+-const TS = KW(`
+-  abstract as async await break case catch class const continue debugger default delete do else enum export extends
+-  false finally for from function get if implements import in instanceof interface is let new null of package private
+-  protected public readonly return set static super switch this throw true try type typeof undefined var void while
+-  with yield
++const RUST_TYPES = SET(`
++  i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize f32 f64 bool char str
++  String Vec Option Result Some None Ok Err Box Rc Arc
+ `)
+ 
+-const PY = KW(`
+-  False None True and as assert async await break class continue def del elif else except finally for from global if
+-  import in is lambda nonlocal not or pass raise return try while with yield
++// ── Go ──────────────────────────────────────────────────────────────
++const GO_KEYWORDS = SET(`
++  break case chan const continue default defer else fallthrough for func go goto
++  if import interface map package range return select struct switch type var
+ `)
+ 
+-const SH = KW(`
+-  if then else elif fi for in do done while until case esac function return break continue local export readonly
+-  declare typeset
++const GO_TYPES = SET(`
++  bool string int int8 int16 int32 int64 uint uint8 uint16 uint32 uint64 uintptr
++  byte rune float32 float64 complex64 complex128 error
+ `)
+ 
+-const GO = KW(`
+-  break case chan const continue default defer else fallthrough for func go goto if import interface map package range
+-  return select struct switch type var nil true false
++const GO_CONSTANTS = SET(`
++  nil true false iota
+ `)
+ 
+-const RUST = KW(`
+-  as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut
+-  pub ref return self Self static struct super trait true type unsafe use where while yield
++// ── HTML / CSS ──────────────────────────────────────────────────────
++const HTML_TAGS = SET(`
++  html head body div span p a h1 h2 h3 h4 h5 h6 ul ol li table tr td th thead tbody
++  form input button select option img script style meta link title header footer nav
++  section main aside article pre code blockquote iframe svg path circle rect
+ `)
+ 
+-const SQL = KW(`
+-  select from where and or not in is null as by group order limit offset insert into values update set delete create
+-  table drop alter add column primary key foreign references join left right inner outer on
++const HTML_ATTRS = SET(`
++  class id href src alt title type value name style rel width height target placeholder
++`)
++
++const CSS_PROPERTIES = SET(`
++  display position flex grid margin padding width height color background border
++  font font-size font-family font-weight line-height text-align overflow z-index
++  opacity transform transition animation box-shadow outline cursor justify-content
++  align-items flex-direction gap top bottom left right
+ `)
+ 
+ const LANGS: Record<string, LangSpec> = {
+-  go: { comment: '//', keywords: GO },
+-  json: { comment: null, keywords: KW('true false null') },
+-  py: { comment: '#', keywords: PY },
+-  rust: { comment: '//', keywords: RUST },
+-  sh: { comment: '#', keywords: SH },
+-  sql: { comment: '--', keywords: SQL },
+-  ts: { comment: '//', keywords: TS },
+-  yaml: { comment: '#', keywords: KW('true false null yes no on off') }
++  c: {
++    lineComment: '//',
++    blockCommentStart: '/*',
++    blockCommentEnd: '*/',
++    keywords: C_CPP_KEYWORDS,
++    types: C_CPP_TYPES,
++    constants: C_CPP_CONSTANTS,
++    builtins: SET('printf scanf malloc free sizeof exit abort'),
++    hasPreprocessor: true
++  },
++  cpp: {
++    lineComment: '//',
++    blockCommentStart: '/*',
++    blockCommentEnd: '*/',
++    keywords: C_CPP_KEYWORDS,
++    types: C_CPP_TYPES,
++    constants: C_CPP_CONSTANTS,
++    builtins: SET('printf scanf malloc free sizeof make_unique make_shared make_pair make_tuple'),
++    hasPreprocessor: true
++  },
++  py: {
++    lineComment: '#',
++    keywords: PY_KEYWORDS,
++    types: PY_TYPES,
++    constants: PY_CONSTANTS,
++    builtins: PY_BUILTINS
++  },
++  js: {
++    lineComment: '//',
++    blockCommentStart: '/*',
++    blockCommentEnd: '*/',
++    keywords: JS_TS_KEYWORDS,
++    types: JS_TS_TYPES,
++    constants: JS_TS_CONSTANTS,
++    builtins: JS_TS_BUILTINS
++  },
++  ts: {
++    lineComment: '//',
++    blockCommentStart: '/*',
++    blockCommentEnd: '*/',
++    keywords: JS_TS_KEYWORDS,
++    types: JS_TS_TYPES,
++    constants: JS_TS_CONSTANTS,
++    builtins: JS_TS_BUILTINS
++  },
++  sh: {
++    lineComment: '#',
++    keywords: SH_KEYWORDS,
++    types: new Set(),
++    constants: SH_CONSTANTS,
++    builtins: SH_BUILTINS,
++    hasShellVars: true
++  },
++  json: {
++    keywords: new Set(),
++    types: new Set(),
++    constants: SET('true false null'),
++    builtins: new Set(),
++    isJson: true
++  },
++  yaml: {
++    lineComment: '#',
++    keywords: new Set(),
++    types: new Set(),
++    constants: SET('true false null yes no on off ~'),
++    builtins: new Set(),
++    isYaml: true
++  },
++  sql: {
++    lineComment: '--',
++    blockCommentStart: '/*',
++    blockCommentEnd: '*/',
++    keywords: SQL_KEYWORDS,
++    types: SQL_TYPES,
++    constants: SET('null true false'),
++    builtins: SQL_BUILTINS,
++    isSql: true
++  },
++  html: {
++    blockCommentStart: '<!--',
++    blockCommentEnd: '-->',
++    keywords: HTML_TAGS,
++    types: HTML_ATTRS,
++    constants: new Set(),
++    builtins: new Set(),
++    isHtml: true
++  },
++  css: {
++    lineComment: '//',
++    blockCommentStart: '/*',
++    blockCommentEnd: '*/',
++    keywords: CSS_PROPERTIES,
++    types: SET('px em rem vh vw percent deg s ms auto none initial inherit'),
++    constants: new Set(),
++    builtins: SET('rgb rgba hsl hsla url calc var min max clamp'),
++    isCss: true
++  },
++  rust: {
++    lineComment: '//',
++    blockCommentStart: '/*',
++    blockCommentEnd: '*/',
++    keywords: RUST_KEYWORDS,
++    types: RUST_TYPES,
++    constants: SET('true false'),
++    builtins: SET('println! print! format! panic! vec! assert! assert_eq!')
++  },
++  go: {
++    lineComment: '//',
++    blockCommentStart: '/*',
++    blockCommentEnd: '*/',
++    keywords: GO_KEYWORDS,
++    types: GO_TYPES,
++    constants: GO_CONSTANTS,
++    builtins: SET('println print len cap make new append copy close delete panic recover')
++  }
+ }
+ 
+ const ALIAS: Record<string, string> = {
+   bash: 'sh',
+-  javascript: 'ts',
+-  js: 'ts',
+-  jsx: 'ts',
++  c: 'c',
++  'c++': 'cpp',
++  cc: 'cpp',
++  cjs: 'js',
++  cpp: 'cpp',
++  cs: 'ts',
++  csharp: 'ts',
++  css: 'css',
++  cxx: 'cpp',
++  docker: 'sh',
++  dockerfile: 'sh',
++  go: 'go',
++  golang: 'go',
++  h: 'c',
++  hpp: 'cpp',
++  htm: 'html',
++  html: 'html',
++  hxx: 'cpp',
++  java: 'ts',
++  javascript: 'js',
++  js: 'js',
++  json: 'json',
++  jsonc: 'json',
++  jsx: 'js',
++  kotlin: 'ts',
++  kt: 'ts',
++  less: 'css',
++  lua: 'sh',
++  mjs: 'js',
++  mysql: 'sql',
++  pgsql: 'sql',
++  php: 'ts',
++  postgres: 'sql',
++  py: 'py',
+   python: 'py',
++  rb: 'py',
+   rs: 'rust',
++  ruby: 'py',
++  rust: 'rust',
++  scss: 'css',
++  sh: 'sh',
+   shell: 'sh',
++  sql: 'sql',
++  sqlite: 'sql',
++  svg: 'html',
++  swift: 'ts',
++  toml: 'yaml',
++  ts: 'ts',
+   tsx: 'ts',
+   typescript: 'ts',
++  xml: 'html',
++  yaml: 'yaml',
+   yml: 'yaml',
+   zsh: 'sh'
+ }
+ 
+-const resolve = (lang: string): LangSpec | null => LANGS[ALIAS[lang] ?? lang] ?? null
++const resolve = (lang: string): LangSpec | null => {
++  const norm = (lang || '').trim().toLowerCase()
++
++  return LANGS[ALIAS[norm] ?? norm] ?? null
++}
+ 
+ export const isHighlightable = (lang: string): boolean => resolve(lang) !== null
+ 
+-const TOKEN_RE = /'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`|\b\d+(?:\.\d+)?\b|[A-Za-z_$][\w$]*/g
++const PASCAL_CASE_RE = /^[A-Z][a-zA-Z0-9_]*$/
+ 
+-export function highlightLine(line: string, lang: string, t: Theme): Token[] {
++const ALL_CAPS_RE = /^[A-Z_][A-Z0-9_]+$/
++
++const NUMBER_RE =
++  /^(?:0x[0-9a-fA-F]+(?:_[0-9a-fA-F]+)*[uUlL]*|0b[01]+(?:_[01]+)*[uUlL]*|0o[0-7]+(?:_[0-7]+)*[uUlL]*|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?[fFlLuU]*)/
++
++const MULTI_CHAR_OPS = [
++  '===',
++  '!==',
++  '==',
++  '!=',
++  '<=',
++  '>=',
++  '=>',
++  '->',
++  '::',
++  '<<=',
++  '>>=',
++  '<<',
++  '>>',
++  '&&',
++  '||',
++  '++',
++  '--',
++  '+=',
++  '-=',
++  '*=',
++  '/=',
++  '%=',
++  '&=',
++  '|=',
++  '^=',
++  '??',
++  '?.',
++  '**'
++]
++
++const SINGLE_CHAR_OPS = new Set(['+', '-', '*', '/', '%', '=', '<', '>', '!', '&', '|', '^', '~', '?'])
++const PUNCTUATION = new Set(['(', ')', '[', ']', '{', '}', ',', ';', ':', '.'])
++
++/**
++ * High-performance lexical tokenizer.
++ * Guarantees `tokenizeLine(line, lang).map(t => t[1]).join('') === line`.
++ */
++export function tokenizeLine(line: string, lang: string): Array<[TokenCategory, string]> {
+   const spec = resolve(lang)
+ 
+   if (!spec) {
+-    return [['', line]]
++    return [['plain', line]]
+   }
+ 
+-  if (spec.comment && line.trimStart().startsWith(spec.comment)) {
+-    return [[t.color.syntaxComment, line]]
++  // Fast path: whole-line single-line comment (preserves existing test parity)
++  const trimmedStart = line.trimStart()
++
++  if (spec.lineComment && trimmedStart.startsWith(spec.lineComment)) {
++    return [['comment', line]]
+   }
+ 
+-  const tokens: Token[] = []
+-  let last = 0
++  const tokens: Array<[TokenCategory, string]> = []
++  const len = line.length
++  let i = 0
++
++  while (i < len) {
++    const ch = line[i]!
++    const rest = line.slice(i)
++
++    // 1. Whitespace
++    if (/\s/.test(ch)) {
++      let j = i + 1
++
++      while (j < len && /\s/.test(line[j]!)) {
++        j++
++      }
+ 
+-  for (const m of line.matchAll(TOKEN_RE)) {
+-    const start = m.index ?? 0
++      tokens.push(['plain', line.slice(i, j)])
++      i = j
+ 
+-    if (start > last) {
+-      tokens.push(['', line.slice(last, start)])
++      continue
+     }
+ 
+-    const tok = m[0]
+-    const ch = tok[0]!
++    // 2. Comments
++    if (spec.lineComment && rest.startsWith(spec.lineComment)) {
++      tokens.push(['comment', rest])
++      i = len
++
++      break
++    }
++
++    if (spec.blockCommentStart && rest.startsWith(spec.blockCommentStart)) {
++      const endIdx = rest.indexOf(spec.blockCommentEnd ?? '*/', spec.blockCommentStart.length)
++
++      if (endIdx !== -1) {
++        const totalLen = endIdx + (spec.blockCommentEnd ?? '*/').length
++        tokens.push(['comment', line.slice(i, i + totalLen)])
++        i += totalLen
++      } else {
++        tokens.push(['comment', rest])
++        i = len
++      }
++
++      continue
++    }
++
++    // 3. C/C++ Preprocessor directive (#include, #define, etc.)
++    if (spec.hasPreprocessor && ch === '#') {
++      const prepMatch = rest.match(/^#[a-zA-Z_]\w*/)
++
++      if (prepMatch) {
++        const directive = prepMatch[0]
++        tokens.push(['keyword', directive])
++        i += directive.length
++
++        // On #include lines, match <header.h> or <vector> as string
++        if (directive === '#include') {
++          const afterInclude = line.slice(i)
++          const angleMatch = afterInclude.match(/^\s*<[^>\n]+>/)
++
++          if (angleMatch) {
++            const leadingSpaces = angleMatch[0].match(/^\s*/)?.[0] ?? ''
++
++            if (leadingSpaces) {
++              tokens.push(['plain', leadingSpaces])
++              i += leadingSpaces.length
++            }
++
++            const header = angleMatch[0].trimStart()
++            tokens.push(['string', header])
++            i += header.length
++          }
++        }
++
++        continue
++      }
++    }
++
++    // 4. Strings (triple quotes in Python, single/double/backticks)
++    if (rest.startsWith('"""') || rest.startsWith("'''")) {
++      const delim = rest.slice(0, 3)
++      const closeIdx = rest.indexOf(delim, 3)
++
++      if (closeIdx !== -1) {
++        tokens.push(['string', line.slice(i, i + closeIdx + 3)])
++        i += closeIdx + 3
++      } else {
++        tokens.push(['string', rest])
++        i = len
++      }
++
++      continue
++    }
+ 
+     if (ch === '"' || ch === "'" || ch === '`') {
+-      tokens.push([t.color.syntaxString, tok])
+-    } else if (ch >= '0' && ch <= '9') {
+-      tokens.push([t.color.syntaxNumber, tok])
+-    } else if (spec.keywords.has(tok)) {
+-      tokens.push([t.color.syntaxKeyword, tok])
+-    } else {
+-      tokens.push(['', tok])
++      let j = i + 1
++      let escaped = false
++
++      while (j < len) {
++        const cur = line[j]!
++
++        if (escaped) {
++          escaped = false
++        } else if (cur === '\\') {
++          escaped = true
++        } else if (cur === ch) {
++          j++
++
++          break
++        }
++
++        j++
++      }
++
++      const strTok = line.slice(i, j)
++
++      // In JSON, a string followed by a colon is an object property key!
++      if (spec.isJson && ch === '"') {
++        const afterStr = line.slice(j).trimStart()
++
++        if (afterStr.startsWith(':')) {
++          tokens.push(['function', strTok])
++          i = j
++
++          continue
++        }
++      }
++
++      tokens.push(['string', strTok])
++      i = j
++
++      continue
+     }
+ 
+-    last = start + tok.length
++    // 5. Shell variables ($VAR, ${VAR}, $1, $?)
++    if (spec.hasShellVars && ch === '$') {
++      const varMatch = rest.match(/^\$(?:\{[^}\n]+\}|[a-zA-Z_]\w*|[@*#?$!0-9])/)
++
++      if (varMatch) {
++        tokens.push(['constant', varMatch[0]])
++        i += varMatch[0].length
++
++        continue
++      }
++    }
++
++    // 6. Numbers
++    if (/\d/.test(ch)) {
++      const numMatch = rest.match(NUMBER_RE)
++
++      if (numMatch) {
++        tokens.push(['number', numMatch[0]])
++        i += numMatch[0].length
++
++        continue
++      }
++    }
++
++    // 7. Multi-character operators
++    let matchedOp = false
++
++    for (const op of MULTI_CHAR_OPS) {
++      if (rest.startsWith(op)) {
++        tokens.push(['operator', op])
++        i += op.length
++        matchedOp = true
++
++        break
++      }
++    }
++
++    if (matchedOp) {
++      continue
++    }
++
++    // 8. Single-character operators
++    if (SINGLE_CHAR_OPS.has(ch)) {
++      tokens.push(['operator', ch])
++      i++
++
++      continue
++    }
++
++    // 9. Punctuation
++    if (PUNCTUATION.has(ch)) {
++      tokens.push(['punctuation', ch])
++      i++
++
++      continue
++    }
++
++    // 10. Identifiers / Words
++    if (/[a-zA-Z_$]/.test(ch)) {
++      let j = i + 1
++
++      while (j < len && /[\w$]/.test(line[j]!)) {
++        j++
++      }
++
++      const word = line.slice(i, j)
++      const lower = word.toLowerCase()
++      const lookahead = line.slice(j).trimStart()
++
++      // YAML key: word followed immediately by ':'
++      if (spec.isYaml && lookahead.startsWith(':')) {
++        tokens.push(['function', word])
++        i = j
++
++        continue
++      }
++
++      // Check keywords
++      if (spec.keywords.has(word) || (spec.isSql && spec.keywords.has(lower))) {
++        tokens.push(['keyword', word])
++      } else if (spec.types.has(word) || (spec.isSql && spec.types.has(lower))) {
++        tokens.push(['type', word])
++      } else if (spec.constants.has(word) || (spec.isSql && spec.constants.has(lower))) {
++        tokens.push(['constant', word])
++      } else if (spec.builtins.has(word) || (spec.isSql && spec.builtins.has(lower))) {
++        tokens.push(['function', word])
++      } else if (lookahead.startsWith('(')) {
++        // Identifier followed by '(' is a function call or definition
++        tokens.push(['function', word])
++      } else if (PASCAL_CASE_RE.test(word) && word.length > 1 && /[a-z]/.test(word)) {
++        // PascalCase identifier (MyClass, Vector, SessionDB)
++        tokens.push(['type', word])
++      } else if (ALL_CAPS_RE.test(word) && word.length >= 2) {
++        // ALL_CAPS identifier (MAX_BUFFER, PI)
++        tokens.push(['constant', word])
++      } else {
++        tokens.push(['plain', word])
++      }
++
++      i = j
++
++      continue
++    }
++
++    // 11. Fallback single character
++    tokens.push(['plain', ch])
++    i++
++  }
++
++  return tokens
++}
++
++function categoryToColor(cat: TokenCategory, t: Theme): string {
++  switch (cat) {
++    case 'keyword':
++      return t.color.syntaxKeyword ?? t.color.border
++
++    case 'string':
++      return t.color.syntaxString ?? t.color.accent
++
++    case 'number':
++      return t.color.syntaxNumber ?? t.color.text
++
++    case 'comment':
++      return t.color.syntaxComment ?? t.color.muted
++
++    case 'function':
++      return t.color.syntaxFunction ?? t.color.primary
++
++    case 'type':
++      return t.color.syntaxType ?? t.color.accent
++
++    case 'constant':
++      return t.color.syntaxConstant ?? t.color.accent
++
++    case 'operator':
++      return t.color.syntaxOperator ?? t.color.border
++
++    case 'punctuation':
++      return t.color.syntaxPunctuation ?? t.color.muted
++
++    case 'plain':
++
++    default:
++      return ''
+   }
++}
+ 
+-  if (last < line.length) {
+-    tokens.push(['', line.slice(last)])
++/**
++ * Highlights a single line of code according to the requested language and theme palette.
++ * Returns an array of `[color, text]` pairs suitable for terminal Ink rendering.
++ */
++export function highlightLine(line: string, lang: string, t: Theme): Token[] {
++  const spec = resolve(lang)
++
++  if (!spec) {
++    return [['', line]]
++  }
++
++  const rawTokens = tokenizeLine(line, lang)
++  const tokens: Token[] = []
++
++  // Combine adjacent tokens that share the same color for optimal Ink rendering
++  for (const [cat, text] of rawTokens) {
++    const color = categoryToColor(cat, t)
++
++    if (tokens.length > 0 && tokens[tokens.length - 1]![0] === color) {
++      tokens[tokens.length - 1]![1] += text
++    } else {
++      tokens.push([color, text])
++    }
+   }
+ 
+   return tokens
+diff --git a/ui-tui/src/theme.ts b/ui-tui/src/theme.ts
+index 4122a623d7..fb47d612df 100644
+--- a/ui-tui/src/theme.ts
++++ b/ui-tui/src/theme.ts
+@@ -29,6 +29,14 @@ export interface ThemeColors {
+   syntaxNumber: string
+   syntaxKeyword: string
+   syntaxComment: string
++  syntaxFunction: string
++  syntaxType: string
++  syntaxConstant: string
++  syntaxOperator: string
++  syntaxPunctuation: string
++
++  /** Markdown headings. Defaults to `primary`. */
++  heading: string
+ 
+   prompt: string
+   sessionLabel: string
+@@ -349,6 +357,13 @@ export function buildPalette(seeds: ThemeSeeds, isLight: boolean): ThemeColors {
+     syntaxNumber: seeds.text,
+     syntaxKeyword: seeds.border ?? tones.border,
+     syntaxComment: muted,
++    syntaxFunction: seeds.primary,
++    syntaxType: seeds.accent,
++    syntaxConstant: seeds.accent,
++    syntaxOperator: seeds.border ?? tones.border,
++    syntaxPunctuation: muted,
++
++    heading: seeds.primary,
+ 
+     prompt: seeds.prompt ?? seeds.text,
+     // sessionLabel/sessionBorder track the muted tone — "same role, same
+@@ -929,7 +944,14 @@ export function fromSkin(
+     syntaxString: c('syntax_string') ?? derived.syntaxString,
+     syntaxNumber: c('syntax_number') ?? derived.syntaxNumber,
+     syntaxKeyword: c('syntax_keyword') ?? derived.syntaxKeyword,
+-    syntaxComment: c('syntax_comment') ?? c('banner_dim') ?? derived.syntaxComment
++    syntaxComment: c('syntax_comment') ?? c('banner_dim') ?? derived.syntaxComment,
++    syntaxFunction: c('syntax_function') ?? derived.syntaxFunction,
++    syntaxType: c('syntax_type') ?? derived.syntaxType,
++    syntaxConstant: c('syntax_constant') ?? derived.syntaxConstant,
++    syntaxOperator: c('syntax_operator') ?? derived.syntaxOperator,
++    syntaxPunctuation: c('syntax_punctuation') ?? derived.syntaxPunctuation,
++
++    heading: c('ui_heading') ?? c('md_heading') ?? derived.heading
+   }
+ 
+   // 4. Guard: contrast floors against the real background + fill polarity.
+-- 
+2.55.0
+

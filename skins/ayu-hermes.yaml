@@ -1,0 +1,120 @@
+# Ayu Hermes — Modern Dark Theme with Full Lexical Syntax Highlighting
+# Inspired by Ayu Dark in OpenCode.
+name: ayu-hermes
+description: "Ayu dark theme — warm amber, soft lilac, and lush seafoam with rich syntax highlighting"
+
+colors:
+  # Base surfaces & backgrounds
+  background: "#0B0E14"
+  status_bar_bg: "#11151C"
+  completion_menu_bg: "#11151C"
+  completion_menu_current_bg: "#1F2430"
+  completion_menu_meta_bg: "#0B0E14"
+  completion_menu_meta_current_bg: "#1F2430"
+  selection_bg: "#1F2430"
+  voice_status_bg: "#11151C"
+
+  # Core typography & branding
+  banner_title: "#C792EA"
+  banner_accent: "#FF8F40"
+  banner_dim: "#8A91A5"
+  banner_text: "#D9DEE8"
+  banner_border: "#343A46"
+
+  # UI tokens
+  ui_primary: "#C792EA"
+  ui_accent: "#FF8F40"
+  ui_text: "#D9DEE8"
+  ui_label: "#73D0FF"
+  ui_border: "#343A46"
+  ui_heading: "#C792EA"
+  ui_tool: "#FFD580"
+  ui_thinking: "#8A91A5"
+
+  # Status indicators
+  ui_ok: "#AAD94C"
+  ui_warn: "#FFB454"
+  ui_error: "#F07178"
+
+  # Interactive chrome
+  prompt: "#D9DEE8"
+  input_rule: "#343A46"
+  response_border: "#C792EA"
+  session_label: "#73D0FF"
+  session_border: "#343A46"
+  shell_dollar: "#73D0FF"
+
+  # Status bar semantics
+  status_bar_text: "#D9DEE8"
+  status_bar_strong: "#C792EA"
+  status_bar_dim: "#8A91A5"
+  status_bar_good: "#AAD94C"
+  status_bar_warn: "#FFB454"
+  status_bar_bad: "#F07178"
+  status_bar_critical: "#F07178"
+
+  # Diffs
+  diff_added: "#16261E"
+  diff_removed: "#32181E"
+  diff_added_word: "#AAD94C"
+  diff_removed_word: "#F07178"
+
+  # Syntax Highlighting tokens
+  syntax_keyword: "#FF8F40"
+  syntax_string: "#AAD94C"
+  syntax_number: "#D2A6FF"
+  syntax_function: "#FFD580"
+  syntax_type: "#73D0FF"
+  syntax_comment: "#6B7280"
+  syntax_constant: "#DFBFFF"
+  syntax_operator: "#F29668"
+  syntax_punctuation: "#8A91A5"
+
+spinner:
+  waiting_faces: ["(✧)", "(✦)", "(◈)", "(◇)", "(◠)"]
+  thinking_faces: ["(✧)", "(✦)", "(◈)", "(⌁)", "(◇)"]
+  thinking_verbs:
+    - "illuminating"
+    - "analyzing"
+    - "synthesizing"
+    - "structuring"
+    - "refining"
+    - "evaluating"
+    - "crafting response"
+    - "parsing context"
+  wings:
+    - ["⟪✧", "✧⟫"]
+    - ["⟪✦", "✦⟫"]
+    - ["⟪◈", "◈⟫"]
+    - ["⟪◇", "◇⟫"]
+
+branding:
+  agent_name: "Ayu Hermes Agent"
+  welcome: "Welcome to Ayu Hermes Agent! Type your message or /help for commands."
+  goodbye: "Goodbye! ✧"
+  response_label: " ✧ Ayu Hermes "
+  prompt_symbol: "❯"
+  help_header: "(✧) Available Commands"
+
+tool_prefix: "│"
+
+banner_logo: |
+  [bold #C792EA]███████╗██╗   ██╗██╗   ██╗      ██╗  ██╗███████╗██████╗ ███╗   ███╗███████╗███████╗[/]
+  [bold #FF8F40]██╔══██║╚██╗ ██╔╝██║   ██║      ██║  ██║██╔════╝██╔══██╗████╗ ████║██╔════╝██╔════╝[/]
+  [#FFD580]███████║ ╚████╔╝ ██║   ██║█████╗███████║█████╗  ██████╔╝██╔████╔██║█████╗  ███████╗[/]
+  [#AAD94C]██╔══██║  ╚██╔╝  ██║   ██║╚════╝██╔══██║██╔══╝  ██╔══██╗██║╚██╔╝██║██╔══╝  ╚════██║[/]
+  [#73D0FF]██║  ██║   ██║   ╚██████╔╝      ██║  ██║███████╗██║  ██║██║ ╚═╝ ██║███████╗███████║[/]
+  [#DFBFFF]╚═╝  ╚═╝   ╚═╝    ╚═════╝       ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝[/]
+
+banner_hero: |
+  [#C792EA]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
+  [#FF8F40]⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⣿⣿⣿⣿⣷⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
+  [#FFD580]⠀⠀⠀⠀⠀⠀⠀⢀⣼⣿⣿⠟⠋⠉⠙⠻⣿⣿⣧⡀⠀⠀⠀⠀⠀⠀⠀[/]
+  [#AAD94C]⠀⠀⠀⠀⠀⠀⢀⣾⣿⡿⠁⠀⠀✧⠀⠀⠈⢿⣿⣷⡀⠀⠀⠀⠀⠀⠀[/]
+  [#73D0FF]⠀⠀⠀⠀⠀⠀⣾⣿⣿⠁⠀⠀⠀◈⠀⠀⠀⠈⣿⣿⣷⠀⠀⠀⠀⠀⠀[/]
+  [#DFBFFF]⠀⠀⠀⠀⠀⠀⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⠀⠀⠀⠀⠀⠀[/]
+  [#AAD94C]⠀⠀⠀⠀⠀⠀⠹⣿⣿⣆⠀⠀⠀✦⠀⠀⠀⣰⣿⣿⠏⠀⠀⠀⠀⠀⠀[/]
+  [#FFD580]⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⣷⣄⡀⠀⢀⣠⣾⣿⡿⠋⠀⠀⠀⠀⠀⠀⠀[/]
+  [#FF8F40]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠻⢿⣿⣿⣿⣿⡿⠟⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
+  [#C792EA]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
+  [dim #8A91A5]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀illuminated code⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
